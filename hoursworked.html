@@ -3,17 +3,18 @@ import { CSV } from "https://js.sabae.cc/CSV.js";
 import Chart from "https://js.sabae.cc/Chart.mjs";
 import { ArrayUtil } from "https://js.sabae.cc/ArrayUtil.js";
 import { ISO3166 } from "https://code4fukui.github.io/iso3166/ISO3166.js";
-import { h1, hr, link } from "https://js.sabae.cc/stdom.js";
+import { h1, h2, hr, link } from "https://js.sabae.cc/stdom.js";
+import { Day } from "https://js.sabae.cc/DateTime.js";
 
 // https://data.oecd.org/emp/hours-worked.htm?context=OECD
 
-const showChartLine = (datasets) => {
+const showChartLine = (xLabel, yLabel, datasets) => {
   const div = document.createElement("div");
   document.body.appendChild(div);
   const chart = document.createElement("canvas");
   div.appendChild(chart);
   div.style.display = "inline-block";
-  div.style.width = "99vw";
+  div.style.width = "95vw";
   const labels = [];
   datasets.forEach(d => {
     d.data.forEach(d => {
@@ -31,23 +32,30 @@ const showChartLine = (datasets) => {
       datasets,
     },
     options: {
-      /*
       scales: {
-        xAxes: [{ /*scaleLabel: { display: true, labelString: indicatorNameX }, type: 'linear', position: 'bottom' }],
-        yAxes: [{ scaleLabel: { display: true, labelString: indicatorNameY }, type: 'linear', position: 'bottom' }],
-      },
-      */
+        xAxes: [{
+          scaleLabel: { display: xLabel != null, labelString: xLabel },
+          // type: 'linear',
+          position: 'bottom',
+        }],
+        yAxes: [{
+          scaleLabel: { display: yLabel != null, labelString: yLabel },
+          type: 'linear',
+          position: 'bottom',
+          ticks: { beginAtZero: true, }
+        }]
+      }
     }
   });
 };
 
-const showChartBar = (datasets) => {
+const showChartBar = (xLabel, yLabel, datasets) => {
   const div = document.createElement("div");
   document.body.appendChild(div);
   const chart = document.createElement("canvas");
   div.appendChild(chart);
   div.style.display = "inline-block";
-  div.style.width = "99vw";
+  div.style.width = "95vw";
   const labels = [];
   const data = [];
   const backgroundColor = [];
@@ -65,25 +73,33 @@ const showChartBar = (datasets) => {
       labels,
       datasets: [
         {
-          label,
+          //label,
           data,
           backgroundColor,
         }
       ],
     },
     options: {
-      /*
+      legend: { display: false },
       scales: {
-        xAxes: [{ /*scaleLabel: { display: true, labelString: indicatorNameX }, type: 'linear', position: 'bottom' }],
-        yAxes: [{ scaleLabel: { display: true, labelString: indicatorNameY }, type: 'linear', position: 'bottom' }],
-      },
-      */
+        xAxes: [{
+          scaleLabel: { display: xLabel != null, labelString: xLabel },
+          // type: 'linear',
+          position: 'bottom',
+        }],
+        yAxes: [{
+          scaleLabel: { display: yLabel != null, labelString: yLabel },
+          type: 'linear',
+          position: 'bottom',
+          ticks: { beginAtZero: true, }
+        }]
+      }
     }
   });
 };
 
 onload = async () => {
-  h1("国別、年間労働時間の変化 - OECDデータ");
+  h1("国別、1日あたり減少した労働時間 - OECDデータ");
 
   const url = "DP_LIVE_30092021083754159.csv";
 
@@ -91,46 +107,57 @@ onload = async () => {
   const selected = ["日本", "フランス", "デンマーク", "ノルウェー", "オランダ", "イギリス", "ポルトガル", "カナダ", "OECD平均", "スウェーデン", "アメリカ合衆国"];
 
   const data = CSV.toJSON(await CSV.fetch(url));
-  //const names = [ArrayUtil.toUnique(data.map(d => d.LOCATION))[0]];
-  const names = ArrayUtil.toUnique(data.map(d => d.LOCATION));
-  const datasets = [];
-  for (const name of names) {
-    const nameja = ISO3166.getCountryByCode(name)?.name_ja || "OECD平均"; // name;
-    datasets.push({
-      data: data.filter(d => d.LOCATION == name).map(d => {
-        return { x: parseInt(d.TIME), y: parseInt(d.Value) };
-      }),
-      label: nameja,
-      lineTension: 0,
-      fill: false,
+  
+  const showGraph = (start, end) => {
+    const names = ArrayUtil.toUnique(data.map(d => d.LOCATION));
+    const datasets = [];
+    for (const name of names) {
+      const nameja = ISO3166.getCountryByCode(name)?.name_ja || "OECD平均"; // name;
+      datasets.push({
+        data: data.filter(d => d.LOCATION == name).map(d => {
+          const yearlen = Day.getLengthOfYear(d.TIME);
+          //const yearlen = 365;
+          return { x: parseInt(d.TIME), y: (parseInt(d.Value) / yearlen).toFixed(2) };
+        }),
+        label: nameja,
+        lineTension: 0,
+        fill: false,
+      });
+    }
+
+    const datasets1 = datasets.filter(d => d.data.find(d => d.x == start) && d.data.find(d => d.x == end));
+    const datasets2 = datasets1.filter(d => selected.includes(d.label));
+    let idx = 0;
+    datasets2.forEach(d => {
+      d.data = d.data.filter(d => d.x >= start && d.x <= end);
+      const n = d.label == "日本" ? 0 : idx + 1;
+      d.borderColor = d.backgroundColor = `hsl(${360 / (datasets2.length + 2) * n}, 74%, 63%)`;
+      idx++;
     });
+
+    const datasets3 = datasets2.map(d => {
+      const ns = d.data.find(d => d.x == start).y;
+      const ne = d.data.find(d => d.x == end).y;
+      //const ratio = (ne - ns) / ns * 100;
+      //return { label: d.label, ratio };
+      const diff = -(ne - ns);
+      return { label: d.label, value: diff, backgroundColor: d.backgroundColor };
+    });
+    console.log(datasets3);
+    showChartBar(null, `減少した1日あたり労働時間(${start}年→${end}年)`, datasets3);
+
+    console.log(datasets2);
+    showChartLine("西暦", "1日あたりの労働時間", datasets2);
+  };
+  for (let i = 1990; i >= 1970; i -= 10) {
+    const start = i;
+    const end = 2020;
+    h2(`${start}年→${end}年 ${end - start}年、減少した1日あたり労働時間`);
+    showGraph(start, end);
   }
-  const start = 1970;
-  const end = 2020;
-  const datasets1 = datasets.filter(d => d.data.find(d => d.x == start) && d.data.find(d => d.x == end));
-  const datasets2 = datasets1.filter(d => selected.includes(d.label));
-  let idx = 0;
-  datasets2.forEach(d => {
-    d.data = d.data.filter(d => d.x >= start && d.x <= end);
-    const n = d.label == "日本" ? 0 : idx + 1;
-    d.borderColor = d.backgroundColor = `hsl(${360 / (datasets2.length + 2) * n}, 74%, 63%)`;
-    idx++;
-  });
-
-  const datasets3 = datasets2.map(d => {
-    const ns = d.data.find(d => d.x == start).y;
-    const ne = d.data.find(d => d.x == end).y;
-    //const ratio = (ne - ns) / ns * 100;
-    //return { label: d.label, ratio };
-    const diff = -(ne - ns);
-    return { label: d.label, value: diff, backgroundColor: d.backgroundColor, name: `削減労働時間/年(${start}→${end})` };
-  });
-  console.log(datasets3);
-  showChartBar(datasets3);
-
-  console.log(datasets2);
-  showChartLine(datasets2);
-
+  h2(`2015年→2020年 5年の変化`);
+  showGraph(2015, 2020);
+  
   
   hr();
   link("App: 福野泰介の一日一創", "https://fukuno.jig.jp/"); // 3353");
@@ -141,6 +168,9 @@ onload = async () => {
 </script>
 
 <style>
+body {
+  margin: 2vh 2.5vw;
+}
 a {
   color: gray !important;
 }
